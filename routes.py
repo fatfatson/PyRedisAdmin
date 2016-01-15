@@ -7,25 +7,48 @@ from mole import response
 from mole.mole import json_dumps
 
 from config import  media_prefix
+import config
+import i18n
 
 @route('/%s/:file#.*#'%media_prefix)
 def media(file):
     return static_file(file, root='./media')
 
-@route('/tree')
+@route('/db_tree')
 def db_tree():
     from over_view import get_all_trees
     import config
     try:
         cur_server_index = int(request.GET.get('s', '0'))
         cur_db_index = int(request.GET.get('db', '0'))
+        cur_scan_cursor = int(request.GET.get('cursor', '0'))
     except:
         cur_server_index = 0
         cur_db_index = 0
+        cur_scan_cursor = 0
     key = request.GET.get('k', '*')
-    all_trees = get_all_trees(cur_server_index, key, db=cur_db_index)
+    all_trees = get_all_trees(cur_server_index, key, db=cur_db_index, cursor=cur_scan_cursor)
+    if type(all_trees)==list:
+        next_scan_cursor, count = all_trees.pop()
+        all_trees_json = json_dumps(all_trees)
+        error_msg = ''
+    else:
+        next_scan_cursor, count = 0, 0
+        all_trees_json = []
+        error_msg = all_trees
     m_config = config.base
-    return template('db_tree', all_trees=json_dumps(all_trees), config=m_config, cur_server_index=cur_server_index,cur_db_index=cur_db_index, media_prefix=media_prefix)
+    return template('db_tree', 
+                    all_trees=all_trees_json, 
+                    config=m_config, 
+                    cur_server_index=cur_server_index,
+                    cur_db_index=cur_db_index,
+                    cur_scan_cursor=next_scan_cursor, 
+                    pre_scan_cursor=cur_scan_cursor,
+                    cur_search_key= (key!='*' and key or ''), 
+                    count = count,
+                    error_msg = error_msg,
+                    media_prefix=media_prefix
+                    )
 
 
 @route('/db_view')
@@ -39,7 +62,7 @@ def db_view():
     key = request.GET.get('k', '*')
     return template("db_view",media_prefix=media_prefix, cur_server_index=cur_server_index, cur_db_index=cur_db_index, keyword=key)
 
-@route('/server_view')
+@route('/server_tree')
 def server_tree():
     from over_view import get_db_trees
     all_trees = get_db_trees()
@@ -113,14 +136,16 @@ def get_cl():
 @route('/delete')
 def delete():
     from data_change import delete_key, delete_value
-    key = request.GET.get('key', None)
+    key = request.GET.get('key', '')
     value = request.GET.get('value', None)
     type = request.GET.get('type', None)
+    cur_scan_cursor = request.GET.get('cursor', None)
     cl,cur_server_index,cur_db_index = get_cl()
     if value:
         delete_value(key,value,type,cl)
     else:
-        delete_key(key,cl)
+        delete_key(key,cl, cursor=cur_scan_cursor)
+        return '<script type=text/javascript> alert("ok")</script>'
     return '<script type=text/javascript> alert("ok");window.location.href=document.referrer</script>'
 
 @route('/ttl')
@@ -158,4 +183,4 @@ def save():
 
 
 if __name__  == "__main__":
-    run(host='0.0.0.0', port=8085, reloader=True)
+    run(host=config.host, port=config.port, reloader=config.debug)
